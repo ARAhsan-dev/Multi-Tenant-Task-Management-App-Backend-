@@ -57,6 +57,17 @@ def get_user_tasks(user_id: int,db: Annotated[Session, Depends(get_db)],current_
     tasks = db.execute(select(models.Task).where(models.Task.assignee_id == user_id,models.Task.tenant_id == tenant_id,models.Task.is_deleted == False)).scalars().all()
     return tasks
 
+#Get Tenant users
+@router.get("", response_model=list[UserResponse])
+def get_users(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: CurrentUser,
+):
+    users = db.execute(
+        select(models.User).where(models.User.tenant_id == current_user.tenant_id)
+    ).scalars().all()
+    return users
+
 # Update User (Partial)
 @router.patch("/{user_id}", response_model=UserResponse)
 def update_user(user_id: int,user_update: UserUpdate,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser,):

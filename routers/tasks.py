@@ -109,37 +109,34 @@ def get_tasks(
         data=tasks,
     )
 
-# Get single task
-@router.get("/{task_id}", response_model=TaskResponse)
-def get_task(task_id: int,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser):
-    return get_task_or_404(task_id, current_user.tenant_id, db)
-
-# Create single task
-@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(task: TaskCreate,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser):
+# Get Soft Deleted Tasks
+@router.get("/deleted", response_model=PaginatedTaskResponse)
+def get_deleted_tasks(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: CurrentUser,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """Get all soft deleted tasks for current tenant."""
     tenant_id = current_user.tenant_id
 
-    # Validate assignee belongs to tenant
-    validate_assignee(task.assignee_id, tenant_id, db)
+    filters = [
+        models.Task.is_deleted == True,
+        models.Task.tenant_id == tenant_id,
+    ]
 
-    new_task = models.Task(
-        title=task.title,
-        description=task.description,
-        status=task.status or models.TaskStatus.todo,
-        priority=task.priority or models.TaskPriority.medium,
-        due_date=task.due_date,
-        labels=task.labels,
-        attachments=task.attachments,
-        assignee_id=task.assignee_id,
-        tenant_id=tenant_id,
-        # Audit trail to track who created it
-        created_by=current_user.id,
-        updated_by=None,
+    total = db.execute(select(func.count()).select_from(models.Task).where(and_(*filters))).scalar()
+    tasks = db.execute(select(models.Task).where(and_(*filters)).limit(limit).offset(offset)).scalars().all()
+
+    return PaginatedTaskResponse(
+        total=total,
+        limit=limit,
+        offset=offset,
+        next=None,
+        previous=None,
+        data=tasks,
     )
-    db.add(new_task)
-    db.commit()
-    db.refresh(new_task)
-    return new_task
+
 
 # Bulk create tasks
 @router.post("/bulk", response_model=List[TaskResponse], status_code=status.HTTP_201_CREATED)
@@ -173,31 +170,6 @@ def create_tasks_bulk(payload: BulkTaskCreate,db: Annotated[Session, Depends(get
         db.refresh(t)
     return created_tasks
 
-# Partial update task
-@router.patch("/{task_id}", response_model=TaskResponse)
-def update_task(task_id: int,task_data: TaskUpdate,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser):
-
-    tenant_id = current_user.tenant_id
-    task = get_task_or_404(task_id, tenant_id, db)
-    update_data = task_data.model_dump(exclude_unset=True)
-
-    #Validate status transition before applying
-    if "status" in update_data:
-        validate_status_transition(task.status, update_data["status"])
-
-    #Validate new assignee belongs to tenant
-    if "assignee_id" in update_data:
-        validate_assignee(update_data["assignee_id"], tenant_id, db)
-
-    for field, value in update_data.items():
-        setattr(task, field, value)
-
-    #Track who last updated the task
-    task.updated_by = current_user.id
-
-    db.commit()
-    db.refresh(task)
-    return task
 
 # Bulk update tasks
 @router.patch("/bulk", response_model=List[TaskResponse])
@@ -228,6 +200,66 @@ def update_tasks_bulk(payload: List[BulkTaskUpdate],db: Annotated[Session, Depen
         db.refresh(t)
     return updated_tasks
 
+
+# Get single task
+@router.get("/{task_id}", response_model=TaskResponse)
+def get_task(task_id: int,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser):
+    return get_task_or_404(task_id, current_user.tenant_id, db)
+
+# Create single task
+@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+def create_task(task: TaskCreate,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser):
+    tenant_id = current_user.tenant_id
+
+    # Validate assignee belongs to tenant
+    validate_assignee(task.assignee_id, tenant_id, db)
+
+    new_task = models.Task(
+        title=task.title,
+        description=task.description,
+        status=task.status or models.TaskStatus.todo,
+        priority=task.priority or models.TaskPriority.medium,
+        due_date=task.due_date,
+        labels=task.labels,
+        attachments=task.attachments,
+        assignee_id=task.assignee_id,
+        tenant_id=tenant_id,
+        # Audit trail to track who created it
+        created_by=current_user.id,
+        updated_by=None,
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
+
+   
+# Partial update task
+@router.patch("/{task_id}", response_model=TaskResponse)
+def update_task(task_id: int,task_data: TaskUpdate,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser):
+
+    tenant_id = current_user.tenant_id
+    task = get_task_or_404(task_id, tenant_id, db)
+    update_data = task_data.model_dump(exclude_unset=True)
+
+    #Validate status transition before applying
+    if "status" in update_data:
+        validate_status_transition(task.status, update_data["status"])
+
+    #Validate new assignee belongs to tenant
+    if "assignee_id" in update_data:
+        validate_assignee(update_data["assignee_id"], tenant_id, db)
+
+    for field, value in update_data.items():
+        setattr(task, field, value)
+
+    #Track who last updated the task
+    task.updated_by = current_user.id
+
+    db.commit()
+    db.refresh(task)
+    return task
+
 # Soft delete task
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int,db: Annotated[Session, Depends(get_db)],current_user: CurrentUser,):
@@ -235,6 +267,7 @@ def delete_task(task_id: int,db: Annotated[Session, Depends(get_db)],current_use
     task.is_deleted = True
     task.updated_by = current_user.id
     db.commit()
+
 
 # Restore soft-deleted task
 @router.patch("/restore/{task_id}", response_model=TaskResponse)
