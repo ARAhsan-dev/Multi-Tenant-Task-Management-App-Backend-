@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from enum import Enum
 from typing import Optional, List
@@ -50,22 +50,22 @@ class UserUpdate(BaseModel):
 # Task Schemas
 class TaskBase(BaseModel):
     title: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = Field(default=None, min_length=1)
+    description: Optional[str] = None
 
 class TaskCreate(TaskBase):
     assignee_id: int 
     status: Optional[TaskStatus] = TaskStatus.todo
     priority: Optional[TaskPriority] = TaskPriority.medium
-    due_date: datetime
+    due_date: date
     labels: Optional[List[str]] = None      
     attachments: Optional[List[str]] = None
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    description: Optional[str] = Field(default=None, min_length=1)
+    description: Optional[str] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
-    due_date: Optional[datetime] = None
+    due_date: Optional[date] = None
     labels: Optional[str] = None
     attachments: Optional[str] = None
     is_deleted: Optional[bool] = None  
@@ -76,7 +76,7 @@ class TaskResponse(TaskBase):
     id: int
     status: TaskStatus
     priority: TaskPriority
-    due_date: datetime
+    due_date: date
     assignee_id: int
     assignee: UserResponse      
     created_by: int

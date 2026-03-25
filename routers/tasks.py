@@ -1,5 +1,5 @@
 from typing import Annotated, Optional, List
-from datetime import datetime
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import Session
@@ -56,8 +56,8 @@ def get_tasks(
     assignee_id: Optional[int] = None,
     status: Optional[models.TaskStatus] = None,
     priority: Optional[models.TaskPriority] = None,
-    due_start: Optional[datetime] = None,
-    due_end: Optional[datetime] = None,
+    due_start: Optional[date] = None,
+    due_end: Optional[date] = None,
     search: Optional[str] = None,
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
